@@ -1,2 +1,2 @@
-# Fiskagg
-Kod för att artbestämma DNA sekvens från fiskägg
+# Bakgrund
+Här finns den kod som använts för att artbestämma COI sekvenser från romkorn av fisk.
