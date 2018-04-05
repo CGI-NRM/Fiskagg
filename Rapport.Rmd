@@ -1,0 +1,199 @@
+---
+title: ""
+author: ""
+date: ""
+header-includes:
+   - \usepackage{geometry}
+   - \usepackage{fancyhdr}
+   - \usepackage[swedish]{babel}
+   - \pagestyle{fancy}
+   - \fancyhf{} 
+   - \lhead{\includegraphics[height=1cm]{~/Documents/NRM_figures/naturhistoriska-riksmuseet.png}}
+   - \rhead{Diarienummer 4.1-694-2017}
+   - \chead{\today}
+   - \lfoot{}
+output: pdf_document
+bibliography: references.bib
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, cache = FALSE)
+```
+
+\pagestyle{fancyplain}
+\begin{titlepage}
+    \raggedright{
+    \includegraphics[width=4cm]{~/Documents/NRM_figures/naturhistoriska-riksmuseet.png}}\\
+    \vspace*{\fill}
+    \vspace*{\fill}
+    \raggedleft{
+    {\bfseries\huge
+        Artbestämning av marina fiskägg\\
+        \large
+        Diarienummer 4.1-694-2017\\
+        \today
+        \vskip2cm
+    }}
+    \vspace*{\fill}
+    \centerline{\includegraphics[width=1.25\linewidth]{~/Documents/NRM_figures/CGIbanner.pdf}}
+    \raggedleft{
+    {\bfseries\Large
+        Centrum för genetisk identifiering\\
+    }}
+    \vspace*{\fill}
+\end{titlepage}
+
+## Centrum för genetisk identifiering
+Centrum för genetisk identifiering vid Naturhistoriska riksmuseet är en uppdragsfinansierad verksamhet som erbjuder myndigheter och organisationer hjälp med genetiska analyser av biologiskt material.
+
+## Uppdrag
+Att från morfologi bestämma vilka fiskarter som rommen kommer ifrån är inte trivialt. En alternativ metod är att använda sig av DNA sekvenser från romkorn för att identifiera vilken art de kommer från. I denna rapport vi försökt identifiera fiskart från 590 romkorn insamlade från Sveriges västkust av SLU Aqua genom att sekvensera en del av genen CO1.
+
+## Material och metoder
+Från erhållen fiskrom lagrad i alkohol har DNA extraherats med "Thermo Scientifics KingFisher Cell and Tissue DNA Kit" enligt beskrivning från tillverkaren. Vi amplifierade en `r 7129-6471`bp bit av COI med primers från den så kallade COI-2 cocktailen [@ivanova2007universal]. Amplifierade fragment renades sedan med Exo-SAP och sekvenserades med M13F primers. Innan identifiering av arter trimmades samtliga sekvenser så att endast baser med god kvalitet bibehålls. Sekvensanalys, filtrering och art-identifiering gjordes alla med hjälp av programmeringsspråket R och paketen: sangerseqR [@sangerseqr], DECIPHER [@decipher], sangeranalyseR [@sangeranalyser]. 
+
+För att skapa en referensdatabas med svenska fiskarter hämtade vi namn på samtliga fiskarter som enligt dyntaxa.se reproducerar i svenska vatten. Släktskap och CO1 sekvenser för dessa hämtades sedan från ["Barcode of Life Data System"](http://boldsystems.org) med hjälp av R-paketet bold [@bold]. 
+
+All kod vi använt för analys finns tillgänglig för nedladdning från Centrum för Genetisk Identifierings githubsida (https://github.com/CGI-NRM/Fiskagg). 
+
+## Resultat
+Från de 590 proverna som var en del av projektet var det 12 stycken där vi inte kunde identifiera något romkorn eller något som såg ut som material av biologiskt ursprung i provrören. För dessa 12 har det inte gjort någon DNA extraktion eller sekvensering. För de kvarvarande 578 proverna har vi extraherat och sekvenserat 576 (väntar fortfarande på resultat för de sista två). Vi har dock vid extraktion noterat att ytterliggare 25 av proverna är så skräpiga eller innehåller så extremt små romkorn att vi bedömer det svårt att få till tillräckligt mycket och rent DNA för att kunna erhålla bra sekvensdata. Vi har dock gått vidare med alla dessa prover och kört de genom hela analysen. 
+
+Totalt amplifierades och sekvenserades således 576 prover. Av dessa var 434 av tillräckligt hög kvalite för att kunna avgöra vilken art romkornet kommer från. För de 132 proverna som inte gick att bestämma beror de flesta (kring 70) på att det inte går att amplifiera DNA från extraktionen. Det är alltså prover där man antingen inte har ett rent prov eller, mer troligt, prover där inte tillräckligt med DNA erhållits för att kunna amplifiera genen. Av de kvarvarande proverna som inte vi lyckats arbestämma finns det DNA, men ursprunget är inte fisk utan det ser ut som olika former av proteobakterier och något oväntat ser 4 prover (17_E477, 17_480, 17_482, 17_E487) ut att komma från krill (Meganyctiphanes norvegica). Detta trots att metoden vi använt oss av är designad och opimerad för att amplifiera fisk. En trolig förklaring till detta är att vi inte erhållit tillräckligt mycket DNA från romkornet och det vi lyckats amplifiera representerar DNA rester från andra celler som fanns i provet. Ett romkorn kan ju vara så lite som några få celler, så är det mycket bakterieceller eller material från andra arter in provet kan det vara svårt att effektivt amplifiera DNA från romkornet.
+
+### Detekterade arter
+I resultatfilen som bifogas som ett excel-blad finns två flikar med data; en flik med era löpnummer och kommentarer från våran DNA extraktion och en andra flik som innehåller art-information för de prover som vi lyckats artbestämma.
+```{r libraries, message=FALSE}
+library(sangerseqR)
+library(DECIPHER)
+library(bold)
+library(ape)
+library(sangeranalyseR)
+library(wesanderson)
+library(dplyr)
+library(ggplot2)
+
+```
+
+
+
+```{r functions}
+trimall <- function(inputseq) {
+  trims <- trim.mott(inputseq) # Identify filter start and stop
+  untrimm <- inputseq@data$PBAS.2 # Get the basecaller sequence
+  trimmed <- substring(untrimm, trims$start, trims$finish) # Do the actual filtering
+  trimmed
+}
+
+```
+
+
+```{r import}
+files <- list.files("../Data", pattern = "ab1$", full.names = TRUE)
+files <- files[!grepl("Empty", files, ignore.case =  TRUE)]
+names <- unlist(strsplit(files, "/"))[c(FALSE,TRUE)] # Get names from files
+namesshort <- unlist(strsplit(names, "_M13F"))[c(TRUE, FALSE)] # Retain only the names not Macrogen info
+
+
+names_list <- strsplit(namesshort, "_SLUCGI")
+namesFilt <- sapply(names_list, "[[", 1)
+
+
+```
+
+```{r read.files}
+sangerData <- lapply(files, FUN = read.abif) # import files, creates list
+names(sangerData) <- namesFilt # Add names seqname as list name
+sangerTrimmed <- lapply(sangerData, FUN = trimall)
+stringset <- DNAStringSet(unlist(sangerTrimmed))
+```
+
+```{r, cache=TRUE}
+swe.fish <- c('Myxine glutinosa','Lampetra fluviatilis','Lampetra planeri','Petromyzon marinus','Amblyraja radiata','Raja clavata','Scyliorhinus canicula','Galeorhinus galeus','Lamna nasus','Etmopterus spinax','Squalus acanthias','Chimaera monstrosa','Esox lucius','Argentina silus','Argentina sphyraena','Osmerus eperlanus','Coregonus albula','Coregonus maraena','Salmo salar','Salmo trutta','Salvelinus alpinus','Salvelinus fontinalis','Salvelinus namaycush','Thymallus thymallus','Belone belone','Gasterosteus aculeatus','Pungitius pungitius','Spinachia spinachia','Entelurus aequoreus','Nerophis lumbriciformis','Nerophis ophidion','Syngnathus acus','Syngnathus rostellatus','Syngnathus typhle','Chelon labrosus','Callionymus lyra','Callionymus maculatus','Aphia minuta','Crystallogobius linearis','Gobius niger','Gobiusculus flavescens','Lesueurigobius friesii','Neogobius melanostomus','Pomatoschistus microps','Pomatoschistus minutus','Pomatoschistus norvegicus','Pomatoschistus pictus','Thorogobius ephippiatus','Centrolabrus exoletus','Ctenolabrus rupestris','Labrus bergylta','Labrus mixtus','Symphodus melops','Gymnocephalus cernuus','Perca fluviatilis','Sander lucioperca','Scomber scombrus','Ammodytes marinus','Ammodytes tobianus','Hyperoplus lanceolatus','Trachinus draco','Anarhichas lupus','Pholis gunnellus','Chirolophis ascanii','Leptoclinus maculatus','Lumpenus lampretaeformis','Lycenchelys sarsii','Lycodes gracilis','Zoarces viviparus','Arnoglossus laterna','Glyptocephalus cynoglossus','Hippoglossoides platessoides','Hippoglossus hippoglossus','Limanda limanda','Microstomus kitt','Platichthys flesus','Pleuronectes platessa','Zeugopterus norvegicus','Scophthalmus maximus','Scophthalmus rhombus','Zeugopterus punctatus','Buglossidium luteum','Solea solea','Agonus cataphractus','Cottus gobio','Cottus koshewnikowi','Cottus poecilopus','Myoxocephalus quadricornis','Myoxocephalus scorpius','Taurulus bubalis','Cyclopterus lumpus','Liparis liparis','Liparis montagui','Eutrigla gurnardus','Sebastes viviparus','Gadus morhua','Melanogrammus aeglefinus','Merlangius merlangus','Pollachius pollachius','Pollachius virens','Raniceps raninus','Trisopterus minutus','Ciliata mustela','Enchelyopus cimbrius','Lota lota','Molva molva','Coryphaenoides rupestris','Merluccius merluccius','Clupea harengus','Sprattus sprattus','Cobitis taenia','Carassius carassius','Carassius gibelio','Cyprinus carpio','Gobio gobio','Abramis brama','Alburnus alburnus','Ballerus ballerus','Blicca bjoerkna','Leucaspius delineatus','Leuciscus aspius','Leuciscus idus','Leuciscus leuciscus','Phoxinus phoxinus','Rutilus rutilus','Scardinius erythrophthalmus','Squalius cephalus','Vimba vimba','Tinca tinca','Barbatula barbatula','Silurus glanis', 'Gaidropsarus vulgaris')
+swefish.bold <- bold_seqspec(taxon = swe.fish, sepfasta = TRUE)
+#taxnames <- paste(swefish.bold$data$phylum_name, swefish.bold$data$family_name, swefish.bold$data$species_name, sep = "; ")
+taxnames <- paste(swefish.bold$data$phylum_name, swefish.bold$data$class_name, swefish.bold$data$family_name, swefish.bold$data$species_name, sep = "; ")
+
+taxonomy <- paste("Root", taxnames, sep="; ")
+fastanames <- paste(">", swefish.bold$data$species_name, sep = "")
+seqdata <- paste(fastanames, swefish.bold$fasta, sep = "\n")
+cat(seqdata, file = "seqdata.fa", sep = "\n")
+dna <- readDNAStringSet("seqdata.fa")
+dna <- RemoveGaps(dna)
+
+```
+
+```{r, message=FALSE, results = "hide"}
+trainingSet <- LearnTaxa(dna, taxonomy)
+```
+
+```{r, message=FALSE, results = "hide"}
+ids <- IdTaxa(stringset, trainingSet, type="extended", processors=1, threshold = 50)
+```
+
+I figur 1 ser vi antal sekvenser per art/grupp för samtliga prover som sekvenserats i ett cirkeldiagram. Det vi tydligast kan läsa ur detta är att det är som nämnts tidigare att mellan 20 och 25% av proverna inte kunnats klassificerats. Vidare ser vi att det är två arter som som dominerar bland de klassificerade proverna.
+
+```{r piechart, echo = FALSE, fig.cap = 'Cirkeldiagram med klassificering av romkorn från CO1 sekvens. Endast klasser med mer än 10 sekvenser har namn utskrivet'}
+par(cex = 0.8)
+plot(ids)
+```
+
+Tittar vi närmare på de prover som klassificerats ser vi i tabell 1 de 15 olika arterna som finns bland proverna. I kolumnen med namnet "Fraktion" ser vi andelen av artbestämda romkorn som kommer från respetive art. Vi kan således se att nästan 75% av de prover som spårats till artnivå var torsk eller rödspätta. Vanligast efter dessa är sand-, ler- och skrubbskädda som tillsammans utgör nästan 20% av de artbestämda romkornen.
+
+Figur 2 visar antal romkorn från de olika arterna i form av ett stapeldiagram och man ser tydligt att hur dominerande de fem ovannämnda arter är till antal. Det är noterbart att det finns romkorn från både kolja, vitling och lyrtorsk som i rödlistebedömningen 2015 klassas som sårbar och akut hotad. Notera att det latinska namnet på småvar *Zuegopterus punctatus* inte är det som erkänns av de flesta taxonomiker utan oftast går den under det latinska namnet *Phrynorhombus norvegicus*. Vi har dock i rapporten använt de de tidigare namnet då det används i boldsystems databaser.
+
+```{r, message=FALSE, fig.cap="Summering av detekterade arter"}
+#eggInfo <- unlist(sapply(ids, "[", 1))
+#eggSpecies <- eggInfo[grepl("taxon5",names(eggInfo))]
+#eggSpeciesSum <- as.data.frame(table(factor(eggSpecies)))
+#colnames(eggSpeciesSum) <- c("Art","Antal")
+root <- lapply(X = ids, FUN=function(X) "unclassified_Root" %in% X[[1]])
+#sangerTrimmed[unlist(root)]
+arter2 <- ids[!unlist(root)]
+arterVec <- unlist(lapply(X = arter2, FUN=function(X) X[[1]][length(X[[1]])]))
+arterDf <- cbind(names(arterVec), arterVec)
+arterDF <- as.data.frame(arterDf)
+arterDF <- arterDF[]
+plot_data <- arterDF %>%
+  count(arterVec) %>%
+  mutate(percent = n/sum(n))
+names(plot_data) <- c("Arter", "Antal", "Fraktion")
+plot_data <- plot_data[-16,]
+sumdata <- arrange(plot_data, desc(Antal))
+#sum(plot_data$Antal)
+svenska_namn <- read.table("../svenska_artnamn.txt", header = TRUE)
+
+artantal <- merge(plot_data, svenska_namn, by.x = "Arter", by.y = "Latin")
+colnames(artantal) <- c("Art", "Antal", "Fraktion", "Svenskt namn")
+arter <- arrange(artantal, desc(Antal))
+knitr::kable(arter[,c(1,4,2)], caption = "Antal romkorn per art")
+
+```
+
+```{r, fig.cap='Antal romkorn per art.'}
+ggplot(plot_data, aes(x = Arter, y = Antal)) + geom_col(fill = wes_palette("Zissou1", 1)) + geom_text(aes(label=Antal), vjust=-0.3, size=2.5) + theme(axis.text.x=element_text(angle=45, hjust=1))
+```
+
+
+
+## Ekonomisk redovisning
+Den största delen av projektets kostnader rör arbetstid som gått åt för extraktion av DNA från romkorn samt utveckling av en analys-pipeline. Nedan presenteras de kostnader som är associerade till projektet. Priser är i SEK och exklusive moms.
+
+  
+
+$\begin{tabular}{ l c }
+  \hline
+  \hline
+  Material & 68828 \\
+  Arbetstid & 108372 \\
+  \hline
+  \textbf{Summa} & \textbf{177000}  \\
+  \hline
+  \hline
+\end{tabular}$
+
+## Referenser
+  
+  
+
+
